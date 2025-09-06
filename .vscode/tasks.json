@@ -1,0 +1,23 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Install Dependencies",
+            "type": "shell",
+            "command": "pip install -r requirements.txt",
+            "group": "build"
+        },
+        {
+            "label": "Run Tests",
+            "type": "shell",
+            "command": "python -m pytest tests/ -v",
+            "group": "test"
+        },
+        {
+            "label": "Start Server",
+            "type": "shell",
+            "command": "python src/server.py",
+            "group": "build"
+        }
+    ]
+}
