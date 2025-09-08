@@ -518,46 +518,69 @@ class CodeGenerator:
         return state
     
     async def _generate_component_with_llm(self, component_name: str, state: AgentState) -> str:
-        prompt = f"""
-        Generate a React functional component for: {component_name}
-        
-        Context:
-        - Feature: {state['issue_summary']}
-        - Description: {state['issue_description']}
-        
-        IMPORTANT: Return ONLY the JavaScript/JSX code, no explanations, no markdown formatting.
-        Start directly with 'import' and end with 'export default ComponentName;'
-        """
-        
-        try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "Return ONLY clean JavaScript code with no explanations."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                max_tokens=2000
-            )
+            """Generate React component using LLM"""
+            prompt = f"""
+            Generate a React functional component for: {component_name}
             
-            code = response.choices[0].message.content.strip()
-            # Clean markdown if present
-            if code.startswith('```'):
+            Context:
+            - Feature: {state['issue_summary']}
+            - Description: {state['issue_description']}
+            
+            IMPORTANT: Return ONLY the JavaScript/JSX code, no explanations, no markdown formatting.
+            Start directly with 'import' and end with 'export default ComponentName;'
+            
+            Create a production-ready React component that:
+            1. Uses modern React hooks (useState, useEffect as needed)
+            2. Includes proper event handling
+            3. Has accessible design
+            4. Follows React best practices
+            """
+            
+            try:
+                response = await self.client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are an expert React developer. Return ONLY clean JavaScript code with no explanations or markdown."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=2000
+                )
+                
+                # Clean the response to remove any markdown or explanations
+                code = response.choices[0].message.content.strip()
+                
+                # Remove markdown code blocks if present
+                if code.startswith('```'):
+                    lines = code.split('\n')
+                    start_idx = 0
+                    for i, line in enumerate(lines):
+                        if not line.strip().startswith('```') and not line.strip() in ['jsx', 'javascript', 'js']:
+                            start_idx = i
+                            break
+                    
+                    end_idx = len(lines)
+                    for i in range(len(lines) - 1, -1, -1):
+                        if not lines[i].strip().startswith('```'):
+                            end_idx = i + 1
+                            break
+                    
+                    code = '\n'.join(lines[start_idx:end_idx])
+                
+                # Remove any explanatory text before import statements
                 lines = code.split('\n')
-                code_lines = []
-                in_code = False
-                for line in lines:
-                    if line.strip().startswith('```'):
-                        in_code = not in_code
-                        continue
-                    if in_code:
-                        code_lines.append(line)
-                code = '\n'.join(code_lines)
-            
-            return code
-        except Exception as e:
-            logger.error(f"LLM generation failed: {e}")
-            return self._generate_component_template(component_name, state['issue_description'])
+                code_start = 0
+                for i, line in enumerate(lines):
+                    if line.strip().startswith('import ') or line.strip().startswith('const ') or line.strip().startswith('function '):
+                        code_start = i
+                        break
+                
+                code = '\n'.join(lines[code_start:])
+                return code.strip()
+                
+            except Exception as e:
+                logger.error(f"LLM component generation failed: {e}")
+                return self._generate_component_template(component_name, state['issue_description'])
     
     def _generate_component_template(self, component_name: str, description: str) -> str:
         """Generate component using templates (previous implementation)"""
@@ -565,14 +588,580 @@ class CodeGenerator:
         pass
     
     async def _update_app_file(self, file_path: str, state: AgentState) -> str:
-        """Update App.jsx file (previous implementation)"""
-        # Implementation from previous version
-        pass
+        """Update App.jsx file"""
+        # Read existing App.jsx content
+        existing_content = ""
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    existing_content = f.read()
+        except:
+            pass
+        
+        if self.client:
+            return await self._update_app_with_llm(file_path, state, existing_content)
+        else:
+            return self._generate_updated_app_template(state)
     
     async def _update_css_file(self, state: AgentState) -> str:
         """Update CSS file (previous implementation)"""
         # Implementation from previous version
         pass
+      
+    async def _update_app_with_llm(self, file_path: str, state: AgentState, existing_content: str) -> str:
+        """Update App.jsx using LLM"""
+        prompt = f"""
+        Update this React App component to implement: {state['issue_summary']}
+        
+        Description: {state['issue_description']}
+        Components available: {[c.split('/')[-1].replace('.jsx', '') for c in state['requirements'].get('components_to_create', [])]}
+        
+        Current App.jsx:
+        {existing_content[:2000] if existing_content else "No existing content"}
+        
+        IMPORTANT: Return ONLY the complete JavaScript/JSX code, no explanations, no markdown formatting.
+        Start directly with 'import' statements and end with 'export default App'
+        
+        Please:
+        1. Add the new functionality while preserving existing features
+        2. Import any new components needed
+        3. Add necessary state management
+        4. Include proper error handling
+        """
+        
+        try:
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert React developer. Return ONLY clean JavaScript code with no explanations or markdown."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=3000
+            )
+            
+            # Clean the response
+            code = response.choices[0].message.content.strip()
+            
+            # Remove markdown code blocks if present
+            if code.startswith('```') or '```jsx' in code or '```javascript' in code:
+                lines = code.split('\n')
+                clean_lines = []
+                in_code_block = False
+                
+                for line in lines:
+                    if line.strip().startswith('```'):
+                        in_code_block = not in_code_block
+                        continue
+                    
+                    if in_code_block or (not line.strip().startswith('Here') and not line.strip().startswith('This')):
+                        clean_lines.append(line)
+                
+                code = '\n'.join(clean_lines)
+            
+            # Remove explanatory text
+            lines = code.split('\n')
+            code_start = 0
+            for i, line in enumerate(lines):
+                if line.strip().startswith('import ') or line.strip().startswith('const ') or line.strip().startswith('function '):
+                    code_start = i
+                    break
+            
+            code = '\n'.join(lines[code_start:])
+            return code.strip()
+            
+        except Exception as e:
+            logger.error(f"LLM App update failed: {e}")
+            return self._generate_updated_app_template(state)
+    
+    async def _update_css_file(self, state: AgentState) -> str:
+        """Update CSS file"""
+        if self.client:
+            return await self._update_css_with_llm(state)
+        else:
+            return self._generate_updated_styles_template(state)
+
+    async def _update_css_with_llm(self, state: AgentState) -> str:
+        """Update CSS using LLM"""
+        prompt = f"""
+        Generate CSS styles for a React todo application with this new feature: {state['issue_summary']}
+        
+        Description: {state['issue_description']}
+        New Components: {[c.split('/')[-1].replace('.jsx', '') for c in state['requirements'].get('components_to_create', [])]}
+        
+        IMPORTANT: Return ONLY the CSS code, no explanations, no markdown formatting, no code blocks.
+        Start directly with CSS selectors and rules.
+        
+        Create modern, responsive CSS that includes:
+        1. Base styles for the todo application
+        2. Styles for the new functionality
+        3. Responsive design
+        4. Accessibility improvements
+        5. Modern visual design
+        """
+        
+        try:
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert CSS developer. Return ONLY clean CSS code with no explanations or markdown."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=2000
+            )
+            
+            # Clean the response
+            code = response.choices[0].message.content.strip()
+            
+            # Remove markdown code blocks if present
+            if code.startswith('```') or '```css' in code:
+                lines = code.split('\n')
+                clean_lines = []
+                in_code_block = False
+                
+                for line in lines:
+                    if line.strip().startswith('```'):
+                        in_code_block = not in_code_block
+                        continue
+                    
+                    if in_code_block or (not line.strip().startswith('This') and not line.strip().startswith('Here')):
+                        clean_lines.append(line)
+                
+                code = '\n'.join(clean_lines)
+            
+            # Remove explanatory text
+            lines = code.split('\n')
+            code_start = 0
+            for i, line in enumerate(lines):
+                if line.strip().startswith('.') or line.strip().startswith('*') or line.strip().startswith('body') or line.strip().startswith('@'):
+                    code_start = i
+                    break
+            
+            code = '\n'.join(lines[code_start:])
+            return code.strip()
+            
+        except Exception as e:
+            logger.error(f"LLM CSS update failed: {e}")
+            return self._generate_updated_styles_template(state)
+    
+    def _generate_component_template(self, component_name: str, description: str):
+        """Fallback template generation"""
+        if "search" in component_name.lower() or "advanced" in component_name.lower():
+            return '''import React, { useState } from 'react';
+
+const AdvancedSearch = ({ onSearch, onFilterChange }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState({
+    category: 'all',
+    priority: 'all',
+    status: 'all'
+  });
+
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    onSearch(value, filters);
+  };
+
+  const handleFilterChange = (filterType, value) => {
+    const newFilters = { ...filters, [filterType]: value };
+    setFilters(newFilters);
+    onFilterChange(newFilters);
+  };
+
+  return (
+    <div className="advanced-search">
+      <div className="search-input-container">
+        <input
+          type="text"
+          placeholder="Search todos..."
+          value={searchTerm}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="search-input"
+        />
+      </div>
+      <div className="filters">
+        <select
+          value={filters.category}
+          onChange={(e) => handleFilterChange('category', e.target.value)}
+          className="filter-select"
+        >
+          <option value="all">All Categories</option>
+          <option value="work">Work</option>
+          <option value="personal">Personal</option>
+          <option value="shopping">Shopping</option>
+        </select>
+        <select
+          value={filters.priority}
+          onChange={(e) => handleFilterChange('priority', e.target.value)}
+          className="filter-select"
+        >
+          <option value="all">All Priorities</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+    </div>
+  );
+};
+
+export default AdvancedSearch;'''
+        
+        elif "category" in component_name.lower():
+            return '''import React from 'react';
+
+const CategoryFilter = ({ selectedCategory, onCategoryChange }) => {
+  const categories = ['all', 'work', 'personal', 'shopping', 'health'];
+  
+  return (
+    <div className="category-filter">
+      <label htmlFor="category-select">Filter by Category:</label>
+      <select 
+        id="category-select"
+        value={selectedCategory}
+        onChange={(e) => onCategoryChange(e.target.value)}
+        className="category-select"
+      >
+        {categories.map(category => (
+          <option key={category} value={category}>
+            {category.charAt(0).toUpperCase() + category.slice(1)}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+};
+
+export default CategoryFilter;'''
+        
+        else:
+            return f'''import React from 'react';
+
+const {component_name} = () => {{
+  return (
+    <div className="{component_name.lower().replace('_', '-')}">
+      <h3>{component_name}</h3>
+      <p>Generated component for: {description[:100]}...</p>
+    </div>
+  );
+}};
+
+export default {component_name};'''
+    
+    def _generate_updated_app_template(self, state: AgentState) -> str:
+        """Generate updated App.jsx using templates"""
+        description = state['issue_description'].lower()
+        requirements = state['requirements']
+        
+        # Determine what components to include
+        components_to_import = []
+        component_usage = []
+        state_additions = []
+        
+        for component_path in requirements.get('components_to_create', []):
+            component_name = component_path.split('/')[-1].replace('.jsx', '')
+            components_to_import.append(f"import {component_name} from './components/{component_name}'")
+            
+            if 'search' in component_name.lower() or 'advanced' in component_name.lower():
+                state_additions.append("  const [searchFilters, setSearchFilters] = useState({ category: 'all', priority: 'all' })")
+                component_usage.append('''        <div className="search-section">
+          <AdvancedSearch 
+            onSearch={(term, filters) => console.log('Search:', term, filters)}
+            onFilterChange={setSearchFilters}
+          />
+        </div>''')
+        
+        import_statements = '\n'.join(components_to_import)
+        additional_state = '\n'.join(state_additions)
+        component_sections = '\n'.join(component_usage)
+        
+        return f'''import {{ useState, useEffect }} from 'react'
+{import_statements}
+import './App.css'
+
+function App() {{
+  const [todos, setTodos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [newTodo, setNewTodo] = useState('')
+{additional_state}
+
+  useEffect(() => {{
+    fetchTodos()
+  }}, [])
+
+  const fetchTodos = async () => {{
+    try {{
+      const response = await fetch('http://localhost:3001/api/todos')
+      const data = await response.json()
+      setTodos(data)
+    }} catch (error) {{
+      console.error('Failed to fetch todos:', error)
+    }} finally {{
+      setLoading(false)
+    }}
+  }}
+
+  const addTodo = async () => {{
+    if (!newTodo.trim()) return
+    
+    try {{
+      const response = await fetch('http://localhost:3001/api/todos', {{
+        method: 'POST',
+        headers: {{
+          'Content-Type': 'application/json',
+        }},
+        body: JSON.stringify({{ title: newTodo, priority: 'medium' }}),
+      }})
+      
+      if (response.ok) {{
+        const todo = await response.json()
+        setTodos([todo, ...todos])
+        setNewTodo('')
+      }}
+    }} catch (error) {{
+      console.error('Failed to add todo:', error)
+    }}
+  }}
+
+  const toggleTodo = async (id, completed) => {{
+    try {{
+      const response = await fetch(`http://localhost:3001/api/todos/${{id}}`, {{
+        method: 'PUT',
+        headers: {{
+          'Content-Type': 'application/json',
+        }},
+        body: JSON.stringify({{ completed }}),
+      }})
+      
+      if (response.ok) {{
+        const updatedTodo = await response.json()
+        setTodos(todos.map(todo => 
+          todo.id === id ? updatedTodo : todo
+        ))
+      }}
+    }} catch (error) {{
+      console.error('Failed to update todo:', error)
+    }}
+  }}
+
+  if (loading) {{
+    return <div className="loading">Loading todos...</div>
+  }}
+
+  return (
+    <div className="app">
+      <header className="header">
+        <h1>Todo App</h1>
+        <p>Enhanced with automation</p>
+      </header>
+      
+      <main className="main-content">
+        <div className="add-todo">
+          <input
+            type="text"
+            value={{newTodo}}
+            onChange={{(e) => setNewTodo(e.target.value)}}
+            placeholder="What needs to be done?"
+            onKeyPress={{(e) => e.key === 'Enter' && addTodo()}}
+          />
+          <button onClick={{addTodo}}>Add Todo</button>
+        </div>
+{component_sections}
+        
+        <div className="todos">
+          {{todos.map(todo => (
+            <div key={{todo.id}} className={{`todo-item ${{todo.completed ? 'completed' : ''}} priority-${{todo.priority}}`}}>
+              <input
+                type="checkbox"
+                checked={{todo.completed}}
+                onChange={{(e) => toggleTodo(todo.id, e.target.checked)}}
+              />
+              <div className="todo-content">
+                <span className="todo-title">{{todo.title}}</span>
+                <div className="todo-meta">
+                  <span className="priority">{{todo.priority}}</span>
+                  <span className="date">{{new Date(todo.created_at).toLocaleDateString()}}</span>
+                </div>
+              </div>
+            </div>
+          ))}}
+        </div>
+        
+        {{todos.length === 0 && (
+          <div className="empty-state">
+            <p>No todos yet. Add one above!</p>
+          </div>
+        )}}
+      </main>
+    </div>
+  )
+}}
+
+export default App'''
+    
+    def _generate_updated_styles_template(self, state: AgentState) -> str:
+        """Generate updated CSS using templates"""
+        return '''* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  color: #333;
+}
+
+.app {
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.header {
+  text-align: center;
+  color: white;
+  margin-bottom: 30px;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+}
+
+.main-content {
+  max-width: 800px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.add-todo {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.add-todo input {
+  flex: 1;
+  padding: 12px;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 16px;
+}
+
+.add-todo button {
+  padding: 12px 24px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.search-section, .advanced-search {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.filter-select, .category-select {
+  padding: 8px 12px;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+}
+
+.todos {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  background: white;
+}
+
+.todo-item.priority-high {
+  border-left: 6px solid #dc3545;
+}
+
+.todo-item.priority-medium {
+  border-left: 6px solid #ffc107;
+}
+
+.todo-item.priority-low {
+  border-left: 6px solid #28a745;
+}
+
+.todo-content {
+  flex: 1;
+}
+
+.todo-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.todo-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.priority, .date {
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  color: #4a5568;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #718096;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 18px;
+  color: white;
+}'''
+
+
+
 
 class ProductionGitIntegrator:
     """Production Git integration with GitHub sync"""

@@ -6,37 +6,57 @@ const AdvancedSearch = () => {
   const [priority, setPriority] = useState('');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    // Implement search functionality here
+  const handleSearchChange = (event) => {
+    setSearchTerm(event.target.value);
+  };
+
+  const handleCategoryChange = (event) => {
+    setCategory(event.target.value);
+  };
+
+  const handlePriorityChange = (event) => {
+    setPriority(event.target.value);
+  };
+
+  const handleDateRangeChange = (event) => {
+    setDateRange({
+      ...dateRange,
+      [event.target.name]: event.target.value,
+    });
   };
 
   return (
-    <form onSubmit={handleSearch}>
+    <div>
       <input
         type="text"
         placeholder="Search..."
         value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
+        onChange={handleSearchChange}
+        aria-label="Search"
       />
-      <select value={category} onChange={(e) => setCategory(e.target.value)}>
-        {/* Populate with category options */}
+      <select value={category} onChange={handleCategoryChange} aria-label="Category">
+        <option value="">All Categories</option>
+        {/* Add more options as needed */}
       </select>
-      <select value={priority} onChange={(e) => setPriority(e.target.value)}>
-        {/* Populate with priority options */}
+      <select value={priority} onChange={handlePriorityChange} aria-label="Priority">
+        <option value="">All Priorities</option>
+        {/* Add more options as needed */}
       </select>
       <input
         type="date"
+        name="start"
         value={dateRange.start}
-        onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+        onChange={handleDateRangeChange}
+        aria-label="Start Date"
       />
       <input
         type="date"
+        name="end"
         value={dateRange.end}
-        onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+        onChange={handleDateRangeChange}
+        aria-label="End Date"
       />
-      <button type="submit">Search</button>
-    </form>
+    </div>
   );
 };
 

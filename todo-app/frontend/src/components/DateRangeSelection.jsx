@@ -1,30 +1,32 @@
 import React, { useState } from 'react';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
+import { DateRangePicker } from 'react-date-range';
+import 'react-date-range/dist/styles.css'; 
+import 'react-date-range/dist/theme/default.css'; 
 
-const DateRangeSelection = () => {
-  const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(new Date());
+const DateRangeSelection = ({ onDateRangeChange }) => {
+    const [state, setState] = useState([
+        {
+            startDate: new Date(),
+            endDate: null,
+            key: 'selection'
+        }
+    ]);
 
-  return (
-    <div>
-      <DatePicker
-        selected={startDate}
-        onChange={date => setStartDate(date)}
-        selectsStart
-        startDate={startDate}
-        endDate={endDate}
-      />
-      <DatePicker
-        selected={endDate}
-        onChange={date => setEndDate(date)}
-        selectsEnd
-        startDate={startDate}
-        endDate={endDate}
-        minDate={startDate}
-      />
-    </div>
-  );
+    const handleSelect = ranges => {
+        setState([ranges.selection]);
+        onDateRangeChange(ranges.selection);
+    };
+
+    return (
+        <div>
+            <DateRangePicker
+                ranges={state}
+                onChange={handleSelect}
+                color="#3d91ff"
+                rangeColors={["#3d91ff", "#3d91ff", "#3d91ff"]}
+            />
+        </div>
+    );
 };
 
 export default DateRangeSelection;
