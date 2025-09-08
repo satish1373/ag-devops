@@ -1,0 +1,162 @@
+🧪 Step 1: Test System Health
+First, let's verify everything is working:
+bash# Check system health
+curl http://localhost:8000/health
+
+# You should see something like:
+# {
+#   "status": "healthy",
+#   "service": "devops-autocoder", 
+#   "langgraph_available": true,
+#   "todo_app": {
+#     "frontend": true,
+#     "backend": true
+#   }
+# }
+🚀 Step 2: Test Automated Export Feature
+This will automatically generate an export button and update your Todo app:
+bash# Test export functionality automation
+curl -X POST http://localhost:8000/test/export
+
+# Expected response:
+# {
+#   "test": "export_functionality",
+#   "trace_id": "abc-123-def",
+#   "files_generated": 3,
+#   "files_written": 3,
+#   "success": true
+# }
+What this does:
+
+✅ Generates ExportButton.jsx component
+✅ Updates App.jsx with export functionality
+✅ Updates App.css with export styling
+✅ Writes files to your filesystem
+✅ Triggers hot reload
+
+🔍 Step 3: Test Automated Search Feature
+This will add real-time search functionality:
+bash# Test search functionality automation
+curl -X POST http://localhost:8000/test/search
+
+# Expected response:
+# {
+#   "test": "search_functionality", 
+#   "trace_id": "xyz-456-ghi",
+#   "files_generated": 3,
+#   "files_written": 3,
+#   "success": true
+# }
+What this does:
+
+✅ Generates SearchBar.jsx component
+✅ Updates App.jsx with search functionality
+✅ Updates App.css with search styling
+✅ Adds real-time filtering
+
+📊 Step 5: Monitor the Automation Process
+bash# View recent logs
+curl http://localhost:8000/logs?lines=50
+
+# Check generated files
+curl http://localhost:8000/files
+
+# View backup files created
+curl http://localhost:8000/backups
+🎭 Step 6: Send Custom Automation Requests
+Try creating your own automation requests:
+bash# Custom notification system
+curl -X POST http://localhost:8000/webhook/jira \
+  -H "Content-Type: application/json" \
+  -H "X-Hub-Signature-256: sha256=test" \
+  -d '{
+    "issue": {
+      "key": "CUSTOM-001",
+      "fields": {
+        "summary": "Add notification system with due dates",
+        "issuetype": {"name": "Story"},
+        "description": "Add notification badges and due date alerts for todos with priority indicators"
+      }
+    }
+  }'
+
+# Custom styling improvements
+curl -X POST http://localhost:8000/webhook/jira \
+  -H "Content-Type: application/json" \
+  -H "X-Hub-Signature-256: sha256=test" \
+  -d '{
+    "issue": {
+      "key": "STYLE-002", 
+      "fields": {
+        "summary": "Enhance todo priority colors",
+        "issuetype": {"name": "Bug"},
+        "description": "Update priority color scheme: high priority red, medium yellow, low green with better contrast"
+      }
+    }
+  }'
+📈 Step 7: Check Processing Status
+bash# Check status of your custom requests
+curl http://localhost:8000/status/CUSTOM-001
+curl http://localhost:8000/status/STYLE-002
+
+# Download generated reports
+curl http://localhost:8000/reports/CUSTOM-001 -o custom-001-report.md
+🔧 Step 8: Run Comprehensive Tests
+bash# Run the test script (if you created it)
+./test-system.sh
+
+# Or test manually:
+echo "Testing all endpoints..."
+curl http://localhost:8000/health && echo "✅ Health OK"
+curl -X POST http://localhost:8000/test/export && echo "✅ Export OK" 
+curl -X POST http://localhost:8000/test/search && echo "✅ Search OK"
+curl http://localhost:8000/files && echo "✅ Files OK"
+🎉 Expected Results
+After running these tests, you should see:
+
+In your Todo app (http://localhost:3000):
+
+📤 Export button that downloads CSV files
+🔍 Search bar with real-time filtering
+🎨 Enhanced visual styling
+⚡ All changes appear automatically (hot reload)
+
+
+In your file system:
+
+todo-app/frontend/src/components/ExportButton.jsx
+todo-app/frontend/src/components/SearchBar.jsx
+Updated todo-app/frontend/src/App.jsx
+Updated todo-app/frontend/src/App.css
+Backup files in backups/ directory
+Reports in reports/ directory
+
+
+In the logs:
+
+Detailed automation pipeline execution
+File generation and writing steps
+Success/error messages
+
+
+
+🚨 If Something Goes Wrong
+bash# Check for errors
+curl http://localhost:8000/health
+
+# View recent errors in logs
+curl http://localhost:8000/logs | grep -i error
+
+# Clean up if needed
+curl -X DELETE http://localhost:8000/cleanup
+🎯 What Makes This Special
+This system demonstrates:
+
+✅ Real automation: Actual files written to your filesystem
+✅ Hot reload integration: Changes appear immediately
+✅ Multi-agent pipeline: 13 specialized agents working together
+✅ Full traceability: Every action logged and trackable
+✅ Safe operations: Automatic backups and rollback capability
+✅ Real-world ready: Production-grade error handling
+
+Try the tests above and let me know what you see! The magic happens when you watch new features appear in your running Todo app automatically! 🚀

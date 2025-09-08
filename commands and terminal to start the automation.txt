@@ -1,0 +1,4 @@
+Terminal 1 - npm start - /todo-app/backend - to start the node server.js
+Terminal 2 - npm start - /todo-app/frontend - To start the todo app
+Terminal 3 - python server.python - to start uvicorn
+Terminal 4 - CMD prompt - ngrok http 8000 - to start ngrok service
