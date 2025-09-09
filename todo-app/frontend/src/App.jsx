@@ -1,40 +1,94 @@
-import React, { useState } from 'react';
-import AdvancedSearch from './AdvancedSearch';
-import CategoryFilter from './CategoryFilter';
-import PrioritySort from './PrioritySort';
-import DateRangeSelection from './DateRangeSelection';
+import React, { useState, useEffect } from 'react';
+import './App.css';
 
-const App = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [category, setCategory] = useState('');
-  const [priority, setPriority] = useState('');
-  const [dateRange, setDateRange] = useState({ start: null, end: null });
+function App() {
+  const [todos, setTodos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newTodo, setNewTodo] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [newPriority, setNewPriority] = useState('medium');
+  const [filter, setFilter] = useState('all');
+  const [error, setError] = useState(null);
 
-  const handleSearch = term => {
-    setSearchTerm(term);
+  useEffect(() => {
+    fetchTodos();
+  }, []);
+
+  const fetchTodos = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/todos');
+      if (!response.ok) {
+        throw new Error('Failed to fetch todos');
+      }
+      const data = await response.json();
+      setTodos(data);
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCategoryFilter = category => {
-    setCategory(category);
+  const addTodo = async (e) => {
+    e.preventDefault();
+    if (!newTodo.trim()) return;
+
+    try {
+      const response = await fetch('http://localhost:3001/api/todos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: newTodo,
+          description: newDescription,
+          priority: newPriority,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add todo');
+      }
+
+      const todo = await response.json();
+      setTodos([todo, ...todos]);
+      setNewTodo('');
+      setNewDescription('');
+      setNewPriority('medium');
+    } catch (error) {
+      setError(error.message);
+    }
   };
 
-  const handlePrioritySort = priority => {
-    setPriority(priority);
+  const toggleTodo = async (id, completed) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/todos/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ completed: !completed }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to toggle todo');
+      }
+
+      const updatedTodo = await response.json();
+      setTodos(todos.map((todo) => (todo.id === id ? updatedTodo : todo)));
+    } catch (error) {
+      setError(error.message);
+    }
   };
 
-  const handleDateRangeSelection = range => {
-    setDateRange(range);
-  };
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
-    <div>
-      <AdvancedSearch onSearch={handleSearch} />
-      <CategoryFilter onFilter={handleCategoryFilter} />
-      <PrioritySort onSort={handlePrioritySort} />
-      <DateRangeSelection onSelect={handleDateRangeSelection} />
-      {/* Existing features/components go here */}
+    <div className="App">
+      {/* Rest of the JSX */}
     </div>
   );
-};
+}
 
 export default App;

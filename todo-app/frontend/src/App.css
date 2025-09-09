@@ -3,6 +3,7 @@ body {
     background-color: #f4f4f4;
     margin: 0;
     padding: 0;
+    color: #333;
 }
 
 .container {
@@ -11,63 +12,65 @@ body {
     padding: 20px;
 }
 
+.todo-list {
+    list-style: none;
+    padding: 0;
+}
+
 .todo-item {
     background-color: #fff;
-    border-radius: 5px;
     margin-bottom: 10px;
     padding: 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    border-radius: 4px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
-/* Styles for the new functionality */
-.advanced-search {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 20px;
+.todo-item:hover {
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
 }
 
-.category-filter, .priority-sort, .date-range-selection {
-    flex: 1;
+.todo-item input[type="checkbox"] {
     margin-right: 10px;
+}
+
+.todo-item.completed {
+    text-decoration: line-through;
+    color: #888;
+}
+
+.todo-input {
+    width: 100%;
     padding: 10px;
-    border-radius: 5px;
+    font-size: 16px;
+    border-radius: 4px;
     border: 1px solid #ddd;
 }
 
-/* Responsive design */
+.todo-button {
+    background-color: #007BFF;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+
+.todo-button:hover {
+    background-color: #0056b3;
+}
+
 @media (max-width: 600px) {
-    .advanced-search {
-        flex-direction: column;
+    .container {
+        padding: 10px;
     }
 
-    .category-filter, .priority-sort, .date-range-selection {
-        margin-bottom: 10px;
-        margin-right: 0;
+    .todo-item, .todo-input, .todo-button {
+        font-size: 14px;
     }
 }
 
-/* Accessibility improvements */
 :focus {
-    outline: 2px solid #000;
-}
-
-/* Modern visual design */
-body {
-    font-family: 'Roboto', sans-serif;
-    color: #333;
-}
-
-.todo-item {
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-.advanced-search {
-    border-bottom: 1px solid #ddd;
-}
-
-.category-filter, .priority-sort, .date-range-selection {
-    background-color: #fff;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    outline: 2px solid #007BFF;
+    outline-offset: 2px;
 }

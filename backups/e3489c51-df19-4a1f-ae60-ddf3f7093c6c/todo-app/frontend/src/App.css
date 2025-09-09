@@ -1,0 +1,98 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.todo-item {
+    background-color: #fff;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.todo-item p {
+    margin: 0;
+}
+
+/* Styles for the new functionality */
+.due-date {
+    font-size: 0.8em;
+    color: #888;
+}
+
+.alert {
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 0.8em;
+}
+
+.alert-overdue {
+    background-color: #f44336;
+}
+
+.alert-upcoming {
+    background-color: #ff9800;
+}
+
+.date-picker {
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    padding: 5px;
+    font-size: 0.9em;
+}
+
+.notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #4caf50;
+    color: #fff;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .container {
+        padding: 10px;
+    }
+
+    .todo-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* Accessibility improvements */
+:focus {
+    outline: 2px solid #3f51b5;
+}
+
+/* Modern visual design */
+body {
+    font-family: 'Roboto', sans-serif;
+}
+
+.todo-item {
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.alert {
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.notification {
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}

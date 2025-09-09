@@ -1,4 +1,13 @@
 Terminal 1 - npm start - /todo-app/backend - to start the node server.js
 Terminal 2 - npm start - /todo-app/frontend - To start the todo app
-Terminal 3 - python server.python - to start uvicorn
+Terminal 3 - python server.py - to start uvicorn
 Terminal 4 - CMD prompt - ngrok http 8000 - to start ngrok service
+Terminal 5 - fastapi server - python server.py
+
+Update Jira Webhook with the latests ngrok url
+https://f2dfcbb68ed9.ngrok-free.app/webhook/jira
+
+
+curl -X POST https://f2dfcbb68ed9.ngrok-free.app/webhook/jira \
+  -H "Content-Type: application/json" \
+  -d '{"test": "webhook"}'

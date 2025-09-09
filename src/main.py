@@ -24,6 +24,35 @@ try:
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
+    
+# Manual .env file loader (add this after your existing imports)
+import os
+from pathlib import Path
+
+def load_env_file():
+    """Manually load environment variables from .env file"""
+    env_file = Path('../.env')
+    if env_file.exists():
+        print(f"Loading environment variables from {env_file.absolute()}")
+        with open(env_file, 'r') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    try:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip().strip('"').strip("'")
+                        os.environ[key] = value
+                        print(f"  Loaded: {key}")
+                    except ValueError:
+                        print(f"  Skipped malformed line {line_num}: {line}")
+        print("Environment variables loaded successfully")
+    else:
+        print(f"No .env file found at {env_file.absolute()}")
+        print("Please create a .env file in the project root with your credentials")
+
+# Load environment variables
+load_env_file()
 
 # Configure logging
 logging.basicConfig(
@@ -521,6 +550,19 @@ class CodeGenerator:
             """Generate React component using LLM"""
             prompt = f"""
             Generate a React functional component for: {component_name}
+            
+            "CRITICAL: Only use React built-in functionality. Do not import external libraries like react-datepicker, react-notification-system, date-fns, etc. Use standard HTML elements and built-in React hooks only."
+            "Use modern React 18 compatible libraries only. For notifications, use react-hot-toast instead of react-notification-system. Prefer built-in HTML elements when possible."
+            # In your code generation prompts, add these constraints:
+            
+            CRITICAL CONSTRAINTS:
+            1. Use ONLY React built-in hooks (useState, useEffect)
+            2. Use ONLY standard HTML elements (input, button, div, etc.)
+            3. Do NOT import external libraries
+            4. Do NOT use date pickers, notification systems, or complex UI libraries
+            5. Keep all functionality simple and self-contained
+            6. Preserve existing working code structure
+            
             
             Context:
             - Feature: {state['issue_summary']}

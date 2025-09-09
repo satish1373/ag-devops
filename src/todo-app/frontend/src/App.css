@@ -1,0 +1,98 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.todo-item {
+    background-color: #fff;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.todo-item p {
+    margin: 0;
+}
+
+/* Styles for the new functionality */
+.advanced-search {
+    background-color: #fff;
+    border-radius: 5px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.advanced-search input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+}
+
+.advanced-search select {
+    width: 100%;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+    margin-top: 10px;
+}
+
+.advanced-search button {
+    background-color: #007BFF;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 20px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+.advanced-search button:hover {
+    background-color: #0056b3;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .container {
+        width: 100%;
+        padding: 0 10px;
+    }
+
+    .advanced-search input[type="text"],
+    .advanced-search select,
+    .advanced-search button {
+        width: 100%;
+    }
+}
+
+/* Accessibility improvements */
+body {
+    font-size: 18px;
+}
+
+button {
+    font-size: 18px;
+}
+
+/* Modern visual design */
+body {
+    font-family: 'Roboto', sans-serif;
+}
+
+.todo-item {
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.advanced-search {
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
