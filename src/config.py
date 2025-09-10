@@ -6,25 +6,23 @@ load_dotenv()
 
 @dataclass
 class Config:
-    # Jira Configuration
-    jira_url: str = os.getenv("JIRA_URL", "")
-    jira_username: str = os.getenv("JIRA_USERNAME", "")
-    jira_token: str = os.getenv("JIRA_TOKEN", "")
-    jira_webhook_secret: str = os.getenv("JIRA_WEBHOOK_SECRET", "")
+    jira_url: str = os.getenv("JIRA_URL", "https://example.atlassian.net")
+    jira_username: str = os.getenv("JIRA_USERNAME", "test@example.com")
+    jira_token: str = os.getenv("JIRA_TOKEN", "test-token")
+    jira_webhook_secret: str = os.getenv("JIRA_WEBHOOK_SECRET", "test-secret")
     
-    # GitHub Configuration
-    github_token: str = os.getenv("GITHUB_TOKEN", "")
-    github_webhook_secret: str = os.getenv("GITHUB_WEBHOOK_SECRET", "")
-    github_repo: str = os.getenv("GITHUB_REPO", "")
+    github_token: str = os.getenv("GITHUB_TOKEN", "test-github-token")
+    github_webhook_secret: str = os.getenv("GITHUB_WEBHOOK_SECRET", "test-github-secret")
+    github_repo: str = os.getenv("GITHUB_REPO", "test/repo")
     
-    # Application Configuration
     app_name: str = os.getenv("APP_NAME", "todo-app")
     deployment_url_base: str = os.getenv("DEPLOYMENT_URL_BASE", "https://app.example.com")
     
-    # OpenAI Configuration
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    project_root: str = os.getenv("PROJECT_ROOT", ".")
+    frontend_path: str = os.getenv("FRONTEND_PATH", "todo-app/frontend")
+    backend_path: str = os.getenv("BACKEND_PATH", "todo-app/backend")
     
-    # Logging
-    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    frontend_dev_url: str = os.getenv("FRONTEND_DEV_URL", "http://localhost:3000")
+    backend_dev_url: str = os.getenv("BACKEND_DEV_URL", "http://localhost:3001")
 
 config = Config()

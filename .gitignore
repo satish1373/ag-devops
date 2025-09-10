@@ -30,6 +30,7 @@ ENV/
 # Environment Variables
 .env
 .env.local
+.env.backup
 
 # Logs
 logs/

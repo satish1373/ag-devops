@@ -1,0 +1,63 @@
+### Test 1: Add Export Feature to Todo App
+POST http://localhost:8000/webhook/jira
+Content-Type: application/json
+X-Hub-Signature-256: sha256=test
+
+{
+    "issue": {
+        "key": "TODO-EXPORT-001",
+        "fields": {
+            "summary": "Add todo export functionality",
+            "issuetype": {"name": "Story"},
+            "description": "Add a button to export todos to CSV format. Users should be able to download their todos as a CSV file with columns: title, description, priority, category, completed status, and created date."
+        }
+    }
+}
+
+### Test 2: Add Search Feature
+POST http://localhost:8000/webhook/jira
+Content-Type: application/json
+X-Hub-Signature-256: sha256=test
+
+{
+    "issue": {
+        "key": "TODO-SEARCH-002", 
+        "fields": {
+            "summary": "Implement todo search functionality",
+            "issuetype": {"name": "Feature"},
+            "description": "Add a search bar above the todo list that allows users to filter todos by title or description. Include real-time search as the user types."
+        }
+    }
+}
+
+### Test 3: Fix Priority Color Bug
+POST http://localhost:8000/webhook/jira
+Content-Type: application/json
+X-Hub-Signature-256: sha256=test
+
+{
+    "issue": {
+        "key": "TODO-PRIORITY-003",
+        "fields": {
+            "summary": "Fix priority color indicators",
+            "issuetype": {"name": "Bug"},
+            "description": "Priority colors are not displaying correctly for high priority todos. High priority should show red border, medium yellow, low green."
+        }
+    }
+}
+
+### Test 4: Add Due Date Notifications
+POST http://localhost:8000/webhook/jira
+Content-Type: application/json
+X-Hub-Signature-256: sha256=test
+
+{
+    "issue": {
+        "key": "TODO-NOTIFICATIONS-004",
+        "fields": {
+            "summary": "Add due date notifications", 
+            "issuetype": {"name": "Epic"},
+            "description": "Implement visual notifications for todos that are due soon. Show overdue todos in red, due today in orange, and due this week in yellow."
+        }
+    }
+}

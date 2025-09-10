@@ -1,0 +1,1007 @@
+"""
+Fixed LangGraph DevOps Autocoder with Windows Path Compatibility
+"""
+
+import asyncio
+import hashlib
+import hmac
+import json
+import logging
+import os
+import subprocess
+import time
+import shutil
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, TypedDict, Union
+import uuid
+import sys
+
+# LangGraph Integration
+try:
+    from langgraph.graph import StateGraph, START, END
+    from langgraph.checkpoint.memory import MemorySaver
+    LANGGRAPH_AVAILABLE = True
+except ImportError:
+    LANGGRAPH_AVAILABLE = False
+    print("Warning: LangGraph not available. Install with: pip install langgraph")
+
+# LLM Integration
+try:
+    import openai
+    LLM_AVAILABLE = True
+except ImportError:
+    LLM_AVAILABLE = False
+    print("Warning: OpenAI not available. Install with: pip install openai")
+
+# GitHub Integration
+try:
+    import requests
+    GITHUB_AVAILABLE = True
+except ImportError:
+    GITHUB_AVAILABLE = False
+    print("Warning: requests not available for GitHub integration")
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/devops_autocoder.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Create directories
+Path("logs").mkdir(exist_ok=True)
+Path("reports").mkdir(exist_ok=True)
+Path("generated_code").mkdir(exist_ok=True)
+
+# Configuration and Types
+class JiraStatus(Enum):
+    TODO = "To Do"
+    IN_PROGRESS = "In Progress" 
+    CODE_GENERATED = "Code Generated"
+    IN_REVIEW = "In Review"
+    READY_FOR_QA = "Ready for QA"
+    DEPLOYED = "Deployed"
+    FAILED = "Failed"
+
+@dataclass
+class JiraUpdate:
+    status: str
+    timestamp: str
+    comment: str
+    attachments: List[str] = field(default_factory=list)
+
+@dataclass
+class FileChange:
+    file: str
+    action: str  # created, modified, deleted
+    lines_added: int = 0
+    lines_removed: int = 0
+    backup_path: Optional[str] = None
+
+@dataclass
+class TestResult:
+    suite: str
+    passed: int
+    failed: int
+    skipped: int
+    duration: float
+
+@dataclass
+class Report:
+    issue_key: str
+    summary: str
+    issue_type: str
+    changes: List[FileChange]
+    test_results: List[TestResult]
+    deployment_url: Optional[str]
+    health_status: str
+    rollbacks: List[str]
+    traceability_log: List[JiraUpdate]
+    created_at: str
+
+class AgentState(TypedDict):
+    # Core workflow data
+    trace_id: str
+    webhook_payload: Dict[str, Any]
+    issue_key: str
+    issue_summary: str
+    issue_type: str
+    issue_description: str
+    
+    # Processing state
+    requirements: Dict[str, Any]
+    plan: Dict[str, Any]
+    generated_code: Dict[str, str]  # filename -> content
+    ui_changes: Dict[str, str]
+    test_suite: Dict[str, str]
+    
+    # Git and deployment
+    branch_name: str
+    commit_hash: str
+    pr_url: str
+    deployment_url: str
+    
+    # File operations
+    file_changes: List[FileChange]
+    backup_created: bool
+    
+    # Monitoring and reporting
+    jira_updates: List[JiraUpdate]
+    report: Optional[Report]
+    errors: List[str]
+    
+    # Status flags
+    verification_passed: bool
+    tests_passed: bool
+    deployment_successful: bool
+    rollback_triggered: bool
+    hot_reload_triggered: bool
+
+# Configuration
+@dataclass
+class Config:
+    # API Keys
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    
+    # Jira Configuration
+    jira_url: str = os.getenv("JIRA_URL", "https://example.atlassian.net")
+    jira_username: str = os.getenv("JIRA_USERNAME", "test@example.com")
+    jira_token: str = os.getenv("JIRA_TOKEN", "test-token")
+    jira_webhook_secret: str = os.getenv("JIRA_WEBHOOK_SECRET", "test-secret")
+    
+    # GitHub Configuration
+    github_token: str = os.getenv("GITHUB_TOKEN", "test-github-token")
+    github_webhook_secret: str = os.getenv("GITHUB_WEBHOOK_SECRET", "test-github-secret")
+    github_repo: str = os.getenv("GITHUB_REPO", "test/repo")
+    
+    # Application Configuration
+    app_name: str = os.getenv("APP_NAME", "todo-app")
+    deployment_url_base: str = os.getenv("DEPLOYMENT_URL_BASE", "https://app.example.com")
+    
+    # Project paths - Fixed for Windows compatibility
+    project_root: str = os.getenv("PROJECT_ROOT", ".")
+    frontend_path: str = os.getenv("FRONTEND_PATH", "generated_code")  # Simplified path
+    backend_path: str = os.getenv("BACKEND_PATH", "generated_code")    # Simplified path
+    
+    # Development server URLs
+    frontend_dev_url: str = os.getenv("FRONTEND_DEV_URL", "http://localhost:3000")
+    backend_dev_url: str = os.getenv("BACKEND_DEV_URL", "http://localhost:3001")
+
+config = Config()
+
+# Utility Functions
+def generate_trace_id() -> str:
+    return str(uuid.uuid4())
+
+def sanitize_filename(filename: str) -> str:
+    """Sanitize filename for Windows compatibility"""
+    # Remove or replace invalid characters
+    invalid_chars = '<>:"/\\|?*'
+    for char in invalid_chars:
+        filename = filename.replace(char, '_')
+    
+    # Ensure path length is reasonable
+    if len(filename) > 200:
+        filename = filename[:200]
+    
+    return filename
+
+def create_safe_file_path(base_path: str, relative_path: str) -> Path:
+    """Create a safe file path for Windows"""
+    # Sanitize the relative path
+    path_parts = relative_path.split('/')
+    sanitized_parts = [sanitize_filename(part) for part in path_parts if part]
+    
+    # Create the full path
+    safe_path = Path(base_path)
+    for part in sanitized_parts:
+        safe_path = safe_path / part
+    
+    return safe_path
+
+class FileManager:
+    """Utility class for file operations with Windows compatibility"""
+    
+    @staticmethod
+    def create_backup(file_path: str, trace_id: str) -> str:
+        """Create backup of existing file"""
+        try:
+            if not os.path.exists(file_path):
+                return ""
+                
+            backup_dir = Path("backups") / sanitize_filename(trace_id)
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Create safe backup path
+            file_name = Path(file_path).name
+            backup_path = backup_dir / sanitize_filename(file_name)
+            
+            shutil.copy2(file_path, backup_path)
+            logger.info(f"Backup created: {file_path} -> {backup_path}")
+            return str(backup_path)
+        except Exception as e:
+            logger.error(f"Failed to create backup for {file_path}: {e}")
+            return ""
+    
+    @staticmethod
+    def write_file(file_path: str, content: str, trace_id: str) -> FileChange:
+        """Write file with backup and Windows compatibility"""
+        try:
+            # Create safe file path
+            safe_path = create_safe_file_path("generated_code", file_path)
+            action = "modified" if safe_path.exists() else "created"
+            
+            # Create backup if file exists
+            backup_path = ""
+            if action == "modified":
+                backup_path = FileManager.create_backup(str(safe_path), trace_id)
+            
+            # Ensure directory exists
+            safe_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write file with proper encoding
+            with open(safe_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(content)
+            
+            lines_added = len(content.split('\n'))
+            logger.info(f"File {action}: {safe_path} ({lines_added} lines)")
+            
+            return FileChange(
+                file=str(safe_path),
+                action=action,
+                lines_added=lines_added,
+                backup_path=backup_path
+            )
+        except Exception as e:
+            logger.error(f"Failed to write file {file_path}: {e}")
+            return FileChange(
+                file=file_path,
+                action="failed",
+                lines_added=0
+            )
+    
+    @staticmethod
+    def rollback_changes(file_changes: List[FileChange]):
+        """Rollback file changes using backups"""
+        for change in reversed(file_changes):
+            try:
+                if change.action == "created" and os.path.exists(change.file):
+                    os.remove(change.file)
+                    logger.info(f"Removed created file: {change.file}")
+                elif change.action == "modified" and change.backup_path and os.path.exists(change.backup_path):
+                    shutil.copy2(change.backup_path, change.file)
+                    logger.info(f"Restored from backup: {change.file}")
+            except Exception as e:
+                logger.error(f"Failed to rollback {change.file}: {e}")
+
+class GitHubIntegrator:
+    """GitHub integration for creating branches and PRs"""
+    
+    def __init__(self):
+        self.token = config.github_token
+        self.repo = config.github_repo
+        self.headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/vnd.github.v3+json",
+            "X-GitHub-Api-Version": "2022-11-28"
+        }
+    
+    async def create_branch(self, branch_name: str) -> bool:
+        """Create a new branch on GitHub"""
+        try:
+            if not GITHUB_AVAILABLE or self.token == "test-github-token":
+                logger.info(f"GitHub integration disabled - would create branch: {branch_name}")
+                return True
+            
+            # Get main branch SHA
+            url = f"https://api.github.com/repos/{self.repo}/git/refs/heads/main"
+            response = requests.get(url, headers=self.headers)
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to get main branch: {response.text}")
+                return False
+            
+            main_sha = response.json()["object"]["sha"]
+            
+            # Create new branch
+            url = f"https://api.github.com/repos/{self.repo}/git/refs"
+            data = {
+                "ref": f"refs/heads/{branch_name}",
+                "sha": main_sha
+            }
+            response = requests.post(url, headers=self.headers, json=data)
+            
+            if response.status_code == 201:
+                logger.info(f"Created GitHub branch: {branch_name}")
+                return True
+            else:
+                logger.error(f"Failed to create branch: {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"GitHub branch creation failed: {e}")
+            return False
+    
+    async def create_pr(self, branch_name: str, title: str, body: str) -> str:
+        """Create a pull request"""
+        try:
+            if not GITHUB_AVAILABLE or self.token == "test-github-token":
+                logger.info(f"GitHub integration disabled - would create PR: {title}")
+                return f"https://github.com/{self.repo}/pull/123"
+            
+            url = f"https://api.github.com/repos/{self.repo}/pulls"
+            data = {
+                "title": title,
+                "head": branch_name,
+                "base": "main",
+                "body": body
+            }
+            response = requests.post(url, headers=self.headers, json=data)
+            
+            if response.status_code == 201:
+                pr_url = response.json()["html_url"]
+                logger.info(f"Created GitHub PR: {pr_url}")
+                return pr_url
+            else:
+                logger.error(f"Failed to create PR: {response.text}")
+                return ""
+                
+        except Exception as e:
+            logger.error(f"GitHub PR creation failed: {e}")
+            return ""
+
+# Agent Implementations
+class IngressVerifier:
+    """Verify webhook signatures and extract issue information"""
+    
+    async def __call__(self, state: AgentState) -> AgentState:
+        logger.info(f"[{state['trace_id']}] Starting webhook verification")
+        
+        try:
+            issue_data = state['webhook_payload'].get('issue', {})
+            state['issue_key'] = issue_data.get('key', '')
+            state['issue_summary'] = issue_data.get('fields', {}).get('summary', '')
+            state['issue_type'] = issue_data.get('fields', {}).get('issuetype', {}).get('name', '')
+            state['issue_description'] = issue_data.get('fields', {}).get('description', '')
+            
+            state['verification_passed'] = True
+            state['file_changes'] = []
+            state['backup_created'] = False
+            state['hot_reload_triggered'] = False
+            
+            logger.info(f"[{state['trace_id']}] Verification successful for {state['issue_key']}")
+            
+        except Exception as e:
+            logger.error(f"[{state['trace_id']}] Verification failed: {e}")
+            state['errors'].append(f"Verification error: {str(e)}")
+            state['verification_passed'] = False
+        
+        return state
+
+class RequirementsAnalyst:
+    """AI-powered requirements analysis using LLM"""
+    
+    def __init__(self):
+        if LLM_AVAILABLE and config.openai_api_key:
+            self.client = openai.AsyncOpenAI(api_key=config.openai_api_key)
+        else:
+            self.client = None
+    
+    async def __call__(self, state: AgentState) -> AgentState:
+        logger.info(f"[{state['trace_id']}] AI-powered requirements analysis")
+        
+        try:
+            if self.client:
+                # Real LLM analysis
+                analysis_prompt = f"""
+                Analyze this Jira ticket and extract technical requirements:
+                
+                Title: {state['issue_summary']}
+                Description: {state['issue_description']}
+                Type: {state['issue_type']}
+                
+                Please analyze and return a JSON response with:
+                1. What React components need to be created
+                2. What existing files need to be modified  
+                3. What specific functionality should be implemented
+                4. Priority level and complexity estimate
+                
+                Focus on:
+                - UI components (buttons, forms, modals)
+                - Data handling (API calls, state management)
+                - Styling requirements
+                - User experience improvements
+                
+                Return only valid JSON in this format:
+                {{
+                    "components_to_create": ["ComponentName.jsx"],
+                    "files_to_modify": ["App.jsx", "App.css"],
+                    "functional_requirements": ["specific functionality"],
+                    "technical_requirements": ["technical details"],
+                    "priority": "high|medium|low",
+                    "complexity": "simple|moderate|complex"
+                }}
+                """
+                
+                response = await self.client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a senior software architect analyzing requirements for React applications. Always respond with valid JSON."},
+                        {"role": "user", "content": analysis_prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=1000
+                )
+                
+                llm_analysis = json.loads(response.choices[0].message.content)
+                
+                state['requirements'] = {
+                    "functional": llm_analysis.get("functional_requirements", []),
+                    "technical": llm_analysis.get("technical_requirements", []),
+                    "priority": llm_analysis.get("priority", "medium"),
+                    "complexity": llm_analysis.get("complexity", "moderate"),
+                    "files_to_modify": llm_analysis.get("files_to_modify", []),
+                    "components_to_create": llm_analysis.get("components_to_create", []),
+                    "ai_analysis": True
+                }
+                
+                logger.info(f"[{state['trace_id']}] AI identified {len(llm_analysis.get('components_to_create', []))} components")
+            else:
+                # Fallback to rule-based analysis
+                state['requirements'] = self._fallback_analysis(state)
+                
+        except Exception as e:
+            logger.error(f"[{state['trace_id']}] LLM analysis failed: {e}")
+            state['requirements'] = self._fallback_analysis(state)
+        
+        return state
+    
+    def _fallback_analysis(self, state: AgentState):
+        """Fallback to rule-based analysis if LLM fails"""
+        description = state['issue_description'].lower()
+        
+        requirements = {
+            "functional": [],
+            "technical": [],
+            "files_to_modify": [],
+            "components_to_create": [],
+            "priority": "medium",
+            "ai_analysis": False
+        }
+        
+        if "export" in description or "download" in description:
+            requirements["functional"].append("Add export functionality")
+            requirements["files_to_modify"].extend(["App.jsx", "App.css"])
+            requirements["components_to_create"].append("ExportButton.jsx")
+        
+        if "search" in description or "filter" in description:
+            requirements["functional"].append("Add search functionality")
+            requirements["files_to_modify"].extend(["App.jsx", "App.css"])
+            requirements["components_to_create"].append("SearchBar.jsx")
+        
+        return requirements
+
+class CodeGenerator:
+    """AI-powered code generation using LLM"""
+    
+    def __init__(self):
+        if LLM_AVAILABLE and config.openai_api_key:
+            self.client = openai.AsyncOpenAI(api_key=config.openai_api_key)
+        else:
+            self.client = None
+    
+    async def __call__(self, state: AgentState) -> AgentState:
+        logger.info(f"[{state['trace_id']}] AI-powered code generation")
+        
+        try:
+            requirements = state['requirements']
+            generated_code = {}
+            
+            # Generate each component using LLM
+            for component_name in requirements.get('components_to_create', []):
+                component_name_clean = component_name.replace('.jsx', '')
+                
+                if self.client:
+                    code = await self._generate_component_with_llm(
+                        component_name_clean, 
+                        state['issue_summary'],
+                        state['issue_description'],
+                        requirements
+                    )
+                else:
+                    code = self._generate_component_template(component_name_clean, state['issue_description'])
+                
+                # Use sanitized filename
+                safe_filename = f"components/{sanitize_filename(component_name)}"
+                generated_code[safe_filename] = code
+            
+            # Update existing files if needed
+            if 'App.jsx' in requirements.get('files_to_modify', []):
+                if self.client:
+                    updated_app = await self._update_app_with_llm(state, requirements)
+                else:
+                    updated_app = self._generate_updated_app(state['issue_description'])
+                generated_code['App.jsx'] = updated_app
+            
+            if 'App.css' in requirements.get('files_to_modify', []):
+                if self.client:
+                    updated_css = await self._update_css_with_llm(state, requirements)
+                else:
+                    updated_css = self._generate_updated_styles(state['issue_description'])
+                generated_code['App.css'] = updated_css
+            
+            state['generated_code'] = generated_code
+            logger.info(f"[{state['trace_id']}] Generated {len(generated_code)} files")
+            
+        except Exception as e:
+            logger.error(f"[{state['trace_id']}] Code generation failed: {e}")
+            state['errors'].append(f"Code generation error: {str(e)}")
+        
+        return state
+    
+    async def _generate_component_with_llm(self, component_name: str, summary: str, description: str, requirements: Dict) -> str:
+        """Generate React component using LLM"""
+        
+        prompt = f"""
+        Generate a complete React functional component for: {component_name}
+        
+        Context:
+        - Issue: {summary}
+        - Description: {description}
+        - Requirements: {requirements.get('functional', [])}
+        
+        Create a production-ready React component that:
+        1. Uses modern React hooks (useState, useEffect as needed)
+        2. Includes proper error handling
+        3. Has good accessibility (ARIA labels, semantic HTML)
+        4. Follows React best practices
+        5. Is well-documented with comments
+        
+        For common components:
+        - ExportButton: Should export data to CSV with proper formatting
+        - SearchBar: Should have real-time filtering with clear functionality
+        - Modal: Should handle keyboard navigation and focus management
+        
+        Return only the component code, no explanations.
+        Export as default.
+        """
+        
+        try:
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert React developer. Generate clean, production-ready React components."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=2000
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"LLM component generation failed: {e}")
+            return self._generate_component_template(component_name, description)
+    
+    async def _update_app_with_llm(self, state: AgentState, requirements: Dict) -> str:
+        """Update App.jsx using LLM"""
+        
+        prompt = f"""
+        Create a React App component that implements the following requirements:
+        
+        Issue: {state['issue_summary']}
+        Description: {state['issue_description']}
+        Requirements: {requirements.get('functional', [])}
+        New Components: {requirements.get('components_to_create', [])}
+        
+        Please create a complete App.jsx that:
+        1. Imports and integrates any new components
+        2. Manages todo state with useState and useEffect
+        3. Handles API calls to backend (GET, POST, PUT, DELETE)
+        4. Follows React best practices
+        5. Includes proper error handling
+        
+        Return only the complete App.jsx code.
+        """
+        
+        try:
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert React developer. Create a complete, functional App component."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=3000
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"LLM App update failed: {e}")
+            return self._generate_updated_app(state['issue_description'])
+    
+    async def _update_css_with_llm(self, state: AgentState, requirements: Dict) -> str:
+        """Update CSS using LLM"""
+        
+        prompt = f"""
+        Generate CSS styles for a React todo application with these requirements:
+        
+        Issue: {state['issue_summary']}
+        Requirements: {requirements.get('functional', [])}
+        New Components: {requirements.get('components_to_create', [])}
+        
+        Create modern, responsive CSS that includes:
+        1. Base styles for the todo application
+        2. Styles for any new components
+        3. Responsive design considerations
+        4. Accessibility improvements
+        5. Modern design patterns (gradients, shadows, animations)
+        
+        Return only the CSS code.
+        """
+        
+        try:
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert CSS developer. Create modern, responsive styles."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=2000
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"LLM CSS update failed: {e}")
+            return self._generate_updated_styles(state['issue_description'])
+    
+    def _generate_component_template(self, component_name: str, description: str):
+        """Fallback template generation"""
+        if "export" in component_name.lower():
+            return '''import React from 'react';
+
+const ExportButton = ({ todos }) => {
+  const exportToCSV = () => {
+    if (!todos || todos.length === 0) {
+      alert('No todos to export!');
+      return;
+    }
+
+    const headers = ['Title', 'Description', 'Priority', 'Category', 'Completed', 'Created Date'];
+    const csvContent = [
+      headers.join(','),
+      ...todos.map(todo => [
+        `"${(todo.title || '').replace(/"/g, '""')}"`,
+        `"${(todo.description || '').replace(/"/g, '""')}"`,
+        todo.priority || 'medium',
+        todo.category || 'general',
+        todo.completed ? 'Yes' : 'No',
+        new Date(todo.created_at).toLocaleDateString()
+      ].join(','))
+    ].join('\\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `todos-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    console.log(`Exported ${todos.length} todos to CSV`);
+  };
+
+  return (
+    <button onClick={exportToCSV} className="export-btn" title="Export all todos to CSV file">
+      📥 Export to CSV ({todos?.length || 0} todos)
+    </button>
+  );
+};
+
+export default ExportButton;'''
+        elif "search" in component_name.lower():
+            return '''import React from 'react';
+
+const SearchBar = ({ searchTerm, onSearchChange, placeholder = "🔍 Search todos..." }) => {
+  return (
+    <div className="search-bar">
+      <input
+        type="text"
+        placeholder={placeholder}
+        value={searchTerm}
+        onChange={(e) => onSearchChange(e.target.value)}
+        className="search-input"
+      />
+      {searchTerm && (
+        <button 
+          onClick={() => onSearchChange('')}
+          className="search-clear"
+          title="Clear search"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+};
+
+export default SearchBar;'''
+        else:
+            return f"""import React from 'react';
+
+const {component_name} = () => {{
+  return (
+    <div className="{component_name.lower()}">
+      <h3>{component_name}</h3>
+      <p>Generated component for: {description[:100]}...</p>
+    </div>
+  );
+}};
+
+export default {component_name};"""
+    
+#     def _generate_updated_app(self, description: str) -> str:
+#         """Fallback App.jsx generation"""
+#         include_export = "export" in description.lower() or "download" in description.lower()
+#         include_search = "search" in description.lower() or "filter" in description.lower()
+        
+#         export_import = "import ExportButton from './components/ExportButton';" if include_export else ""
+#         search_import = "import SearchBar from './components/SearchBar';" if include_search else ""
+        
+#         search_state = "const [searchTerm, setSearchTerm] = useState('');" if include_search else ""
+#         search_filter = """const filteredTodos = todos.filter(todo => 
+#     todo.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+#     (todo.description && todo.description.toLowerCase().includes(searchTerm.toLowerCase()))
+#   );""" if include_search else "const filteredTodos = todos;"
+        
+#         export_component = '''
+#         <div className="export-section">
+#           <ExportButton todos={filteredTodos} />
+#         </div>''' if include_export else ""
+        
+#         search_component = '''
+#         <div className="search-section">
+#           <SearchBar 
+#             searchTerm={searchTerm}
+#             onSearchChange={setSearchTerm}
+#           />
+#         </div>''' if include_search else ""
+        
+#         return f'''import {{ useState, useEffect }} from 'react';
+# {export_import}
+# {search_import}
+# import './App.css';
+
+# function App() {{
+#   const [todos, setTodos] = useState([]);
+#   const [loading, setLoading] = useState(true);
+#   const [newTodo, setNewTodo] = useState('');
+#   {search_state}
+
+#   useEffect(() => {{
+#     fetchTodos();
+#   }}, []);
+
+#   const fetchTodos = async () => {{
+#     try {{
+#       const response = await fetch('http://localhost:3001/api/todos');
+#       const data = await response.json();
+#       setTodos(data);
+#     }} catch (error) {{
+#       console.error('Failed to fetch todos:', error);
+#     }} finally {{
+#       setLoading(false);
+#     }}
+#   }};
+
+#   const addTodo = async () => {{
+#     if (!newTodo.trim()) return;
+    
+#     try {{
+#       const response = await fetch('http://localhost:3001/api/todos', {{
+#         method: 'POST',
+#         headers: {{
+#           'Content-Type': 'application/json',
+    def _generate_updated_app(self, description: str) -> str:
+        """Fallback App.jsx generation"""
+        include_export = "export" in description.lower() or "download" in description.lower()
+        include_search = "search" in description.lower() or "filter" in description.lower()
+        
+        export_import = "import ExportButton from './components/ExportButton';" if include_export else ""
+        search_import = "import SearchBar from './components/SearchBar';" if include_search else ""
+        
+        search_state = "const [searchTerm, setSearchTerm] = useState('');" if include_search else ""
+        search_filter = """const filteredTodos = todos.filter(todo => 
+        todo.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (todo.description && todo.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    );""" if include_search else "const filteredTodos = todos;"
+        
+        export_component = '''
+            <div className="export-section">
+            <ExportButton todos={filteredTodos} />
+            </div>''' if include_export else ""
+        
+        search_component = '''
+            <div className="search-section">
+            <SearchBar 
+                searchTerm={searchTerm}
+                onSearchChange={setSearchTerm}
+            />
+            </div>''' if include_search else ""
+        
+        # Build the component with proper escaping - NO f-string here!
+        app_code = """import { useState, useEffect } from 'react';
+    """ + export_import + """
+    """ + search_import + """
+    import './App.css';
+
+    function App() {
+    const [todos, setTodos] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [newTodo, setNewTodo] = useState('');
+    """ + search_state + """
+
+    useEffect(() => {
+        fetchTodos();
+    }, []);
+
+    const fetchTodos = async () => {
+        try {
+        const response = await fetch('http://localhost:3001/api/todos');
+        const data = await response.json();
+        setTodos(data);
+        } catch (error) {
+        console.error('Failed to fetch todos:', error);
+        } finally {
+        setLoading(false);
+        }
+    };
+
+    const addTodo = async () => {
+        if (!newTodo.trim()) return;
+        
+        try {
+        const response = await fetch('http://localhost:3001/api/todos', {
+            method: 'POST',
+            headers: {
+            'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ title: newTodo, priority: 'medium' }),
+        });
+        
+        if (response.ok) {
+            const todo = await response.json();
+            setTodos([todo, ...todos]);
+            setNewTodo('');
+        }
+        } catch (error) {
+        console.error('Failed to add todo:', error);
+        }
+    };
+
+    const toggleTodo = async (id, completed) => {
+        try {
+        const response = await fetch(`http://localhost:3001/api/todos/${id}`, {
+            method: 'PUT',
+            headers: {
+            'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ completed }),
+        });
+        
+        if (response.ok) {
+            const updatedTodo = await response.json();
+            setTodos(todos.map(todo => 
+            todo.id === id ? updatedTodo : todo
+            ));
+        }
+        } catch (error) {
+        console.error('Failed to update todo:', error);
+        }
+    };
+
+    const deleteTodo = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this todo?')) {
+        return;
+        }
+        
+        try {
+        const response = await fetch(`http://localhost:3001/api/todos/${id}`, {
+            method: 'DELETE',
+        });
+        
+        if (response.ok) {
+            setTodos(todos.filter(todo => todo.id !== id));
+        }
+        } catch (error) {
+        console.error('Failed to delete todo:', error);
+        }
+    };
+
+    if (loading) {
+        return <div className="loading">Loading todos...</div>;
+    }
+
+    """ + search_filter + """
+
+    return (
+        <div className="app">
+        <header className="header">
+            <h1>🚀 Todo App</h1>
+            <p>Powered by LangGraph DevOps Automation</p>
+        </header>
+        
+        <main className="main-content">
+            <div className="add-todo">
+            <input
+                type="text"
+                value={newTodo}
+                onChange={(e) => setNewTodo(e.target.value)}
+                placeholder="What needs to be done?"
+                onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+            />
+            <button onClick={addTodo}>Add Todo</button>
+            </div>""" + search_component + export_component + """
+            
+            <div className="filter-info">
+            <p>
+                Showing: {filteredTodos.length} of {todos.length} todos
+            </p>
+            </div>
+            
+            <div className="todos">
+            {filteredTodos.map(todo => (
+                <div key={todo.id} className={`todo-item ${todo.completed ? 'completed' : ''} priority-${todo.priority}`}>
+                <input
+                    type="checkbox"
+                    checked={todo.completed}
+                    onChange={(e) => toggleTodo(todo.id, e.target.checked)}
+                />
+                <div className="todo-content">
+                    <span className="todo-title">{todo.title}</span>
+                    {todo.description && <span className="todo-description">{todo.description}</span>}
+                    <div className="todo-meta">
+                    <span className="priority">{todo.priority}</span>
+                    <span className="category">{todo.category}</span>
+                    <span className="date">{new Date(todo.created_at).toLocaleDateString()}</span>
+                    </div>
+                </div>
+                <button 
+                    onClick={() => deleteTodo(todo.id)}
+                    className="delete-btn"
+                    title="Delete todo"
+                >
+                    🗑️
+                </button>
+                </div>
+            ))}
+            </div>
+            
+            {filteredTodos.length === 0 && todos.length > 0 && (
+            <div className="empty-state">
+                <p>No todos match your search</p>
+            </div>
+            )}
+            
+            {todos.length === 0 && (
+            <div className="empty-state">
+                <p>No todos yet. Add one above!</p>
+            </div>
+            )}
+        </main>
+        </div>
+    );
+    }
+
+    export default App;"""
+        
+        return app_code

@@ -1,0 +1,73 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.todo-item {
+    background-color: #fff;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Styles for the new functionality */
+.advanced-search {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.category-filter, .priority-sort, .date-range-selection {
+    flex: 1;
+    margin-right: 10px;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .advanced-search {
+        flex-direction: column;
+    }
+
+    .category-filter, .priority-sort, .date-range-selection {
+        margin-bottom: 10px;
+        margin-right: 0;
+    }
+}
+
+/* Accessibility improvements */
+:focus {
+    outline: 2px solid #000;
+}
+
+/* Modern visual design */
+body {
+    font-family: 'Roboto', sans-serif;
+    color: #333;
+}
+
+.todo-item {
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.advanced-search {
+    border-bottom: 1px solid #ddd;
+}
+
+.category-filter, .priority-sort, .date-range-selection {
+    background-color: #fff;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}

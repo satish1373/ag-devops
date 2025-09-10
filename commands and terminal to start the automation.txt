@@ -1,0 +1,60 @@
+Servers List:
+1. Express.js (Todo backend)
+cd langgraph-devops-autocoder/todo-app/backend
+npm start
+
+2. React Dev Server (Todo frontend) - 
+cd langgraph-devops-autocoder/todo-app/frontend
+npm start
+
+3. FastAPI + LangGraph (Automation system) ← This is your FastAPI server
+cd langgraph-devops-autocoder
+source venv/bin/activate
+python src/server.py
+
+4. Ngrok (Tunnel) - ngrok http 8000
+
+
+# Terminal 1 - Backend
+cd langgraph-devops-autocoder/todo-app/backend
+npm start
+
+# Terminal 2 - Frontend  
+cd langgraph-devops-autocoder/todo-app/frontend
+npm start
+
+# Terminal 3 - Automation
+cd langgraph-devops-autocoder
+source venv/bin/activate
+python src/server.py
+
+# Terminal 4 - Ngrok
+ngrok http 8000
+https://unissuable-sibyl-maniacally.ngrok-free.app
+
+Jira webhook for static domain url
+https://unissuable-sibyl-maniacally.ngrok-free.app/webhook/jira
+
+
+Update Jira Webhook with the latests ngrok url
+https://f2dfcbb68ed9.ngrok-free.app/webhook/jira
+
+
+curl -X POST https://f2dfcbb68ed9.ngrok-free.app/webhook/jira \
+  -H "Content-Type: application/json" \
+  -d '{"test": "webhook"}'
+  
+ 
+ 
+ # Check if FastAPI is responding
+curl http://localhost:8000/health
+# Should return: {"status":"healthy","service":"devops-autocoder"}
+
+# Check FastAPI endpoints
+curl http://localhost:8000/
+# Should return: {"service":"LangGraph DevOps Autocoder","version":"1.0.0",...}
+
+# Test FastAPI webhook endpoint
+curl -X POST http://localhost:8000/webhook/jira \
+  -H "Content-Type: application/json" \
+  -d '{"test": "webhook"}'

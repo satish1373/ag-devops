@@ -1,0 +1,72 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.todo-list {
+    list-style: none;
+    padding: 0;
+}
+
+.todo-item {
+    background: #fff;
+    margin-bottom: 10px;
+    padding: 10px;
+    border-radius: 4px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+/* Styles for the new functionality */
+.due-date {
+    font-size: 0.8em;
+    color: #888;
+}
+
+.alert {
+    color: #f00;
+    font-weight: bold;
+}
+
+.date-picker {
+    width: 100%;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+.notification {
+    background: #ff0;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    color: #000;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .container {
+        width: 100%;
+        padding: 0 20px;
+    }
+}
+
+/* Accessibility improvements */
+:focus {
+    outline: 2px solid #00f;
+}
+
+/* Modern visual design */
+.todo-item {
+    transition: box-shadow 0.3s ease;
+}
+
+.todo-item:hover {
+    box-shadow: 0 0 20px rgba(0,0,0,0.2);
+}
