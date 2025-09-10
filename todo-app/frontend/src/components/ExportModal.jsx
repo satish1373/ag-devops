@@ -19,20 +19,24 @@ const ExportModal = ({ isOpen, onClose, onExport }) => {
 
   // Handle export confirmation
   const handleExportConfirm = () => {
+    // Call the onExport function with the selected format
     onExport(exportFormat);
+    // Close the modal
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} ariaLabel="Export modal">
+    <Modal isOpen={isOpen} onClose={onClose} aria-label="Export modal">
       <h2>Export Data</h2>
       <SearchBar />
       <div>
-        <label htmlFor="export-format">Export format:</label>
-        <select id="export-format" value={exportFormat} onChange={handleExportFormatChange}>
-          <option value="csv">CSV</option>
-          <option value="json">JSON</option>
-        </select>
+        <label>
+          Export format:
+          <select value={exportFormat} onChange={handleExportFormatChange}>
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+          </select>
+        </label>
       </div>
       <ExportButton onClick={handleExportConfirm} />
     </Modal>
@@ -49,4 +53,4 @@ ExportModal.propTypes = {
 export default ExportModal;
 ```
 
-This is a production-ready React component for an export modal. It uses modern React with hooks, has clean and professional code, handles errors properly, is accessible with ARIA labels, and exports as default. It also includes helpful comments for understanding the code. The component uses common components like ExportButton, SearchBar, and Modal. The ExportButton exports data to CSV with proper formatting and download. The SearchBar has real-time filtering with a clear button. The Modal handles keyboard navigation and focus management.
+Please note that the `ExportButton`, `SearchBar`, and `Modal` components are not included in this code. They should be implemented separately and imported into this component.

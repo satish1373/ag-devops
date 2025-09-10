@@ -1,108 +1,67 @@
 ```jsx
-// ExportButton.js
-import React from 'react';
+// Importing necessary libraries and dependencies
+import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { saveAs } from 'file-saver';
-import { CSVLink } from "react-csv";
 
+// ExportButton Component
 const ExportButton = ({ data }) => {
-  // Error handling for empty or invalid data
-  if (!data || !Array.isArray(data) || !data.length) {
-    return <p>No data to export</p>;
+  // State to handle loading status
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Function to convert data to CSV
+  const convertToCSV = (data) => {
+    const replacer = (key, value) => value === null ? '' : value;
+    const header = Object.keys(data[0]);
+    let csv = data.map(row => header.map(fieldName => JSON.stringify(row[fieldName], replacer)).join(','));
+    csv.unshift(header.join(','));
+    return csv.join('\r\n');
   }
 
-  const headers = Object.keys(data[0]);
+  // Function to handle export
+  const handleExport = async () => {
+    setIsLoading(true);
+    try {
+      const csvData = convertToCSV(data);
+      const csvBlob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+      const csvUrl = URL.createObjectURL(csvBlob);
+      const link = document.createElement('a');
+      link.href = csvUrl;
+      link.setAttribute('download', 'export.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Failed to export data', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // useEffect to handle component updates
+  useEffect(() => {
+    // Any cleanup logic can go here
+    return () => {
+      // Cleanup
+    }
+  }, []);
 
   return (
-    <CSVLink
-      data={data}
-      headers={headers}
-      filename={"todo-list.csv"}
-      className="btn btn-primary"
-      target="_blank"
+    <button
+      onClick={handleExport}
+      disabled={isLoading}
+      aria-label="Export data"
     >
-      Export
-    </CSVLink>
+      {isLoading ? 'Exporting...' : 'Export'}
+    </button>
   );
-};
+}
 
+// Prop Types
 ExportButton.propTypes = {
   data: PropTypes.array.isRequired,
-};
+}
 
 export default ExportButton;
-
-// SearchBar.js
-import React, { useState } from 'react';
-import PropTypes from 'prop-types';
-
-const SearchBar = ({ onSearch }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const handleSearch = (event) => {
-    setSearchTerm(event.target.value);
-    onSearch(event.target.value);
-  };
-
-  const handleClear = () => {
-    setSearchTerm('');
-    onSearch('');
-  };
-
-  return (
-    <div>
-      <input
-        type="text"
-        value={searchTerm}
-        onChange={handleSearch}
-        placeholder="Search..."
-      />
-      <button onClick={handleClear}>Clear</button>
-    </div>
-  );
-};
-
-SearchBar.propTypes = {
-  onSearch: PropTypes.func.isRequired,
-};
-
-export default SearchBar;
-
-// Modal.js
-import React, { useEffect, useRef } from 'react';
-import PropTypes from 'prop-types';
-
-const Modal = ({ isOpen, onClose, children }) => {
-  const modalRef = useRef();
-
-  useEffect(() => {
-    function handleOutsideClick(event) {
-      if (!modalRef.current.contains(event.target)) {
-        if (isOpen) onClose();
-      }
-    }
-
-    window.addEventListener('click', handleOutsideClick);
-    return () => window.removeEventListener('click', handleOutsideClick);
-  }, [isOpen, onClose]);
-
-  return (
-    <div ref={modalRef}>
-      {isOpen ? (
-        <div>
-          <button onClick={onClose}>Close</button>
-          {children}
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-Modal.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  onClose: PropTypes.func.isRequired,
-  children: PropTypes.node,
-};
-
-export default Modal;
 ```
+
+Please note that this is a basic implementation and might need adjustments based on your specific use case. For instance, you might want to handle the error in a user-friendly way rather than just logging it to the console.
