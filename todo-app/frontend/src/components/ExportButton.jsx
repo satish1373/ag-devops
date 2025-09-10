@@ -1,67 +1,41 @@
-```jsx
-// Importing necessary libraries and dependencies
-import React, { useState, useEffect } from 'react';
-import PropTypes from 'prop-types';
+import React from 'react';
 
-// ExportButton Component
-const ExportButton = ({ data }) => {
-  // State to handle loading status
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Function to convert data to CSV
-  const convertToCSV = (data) => {
-    const replacer = (key, value) => value === null ? '' : value;
-    const header = Object.keys(data[0]);
-    let csv = data.map(row => header.map(fieldName => JSON.stringify(row[fieldName], replacer)).join(','));
-    csv.unshift(header.join(','));
-    return csv.join('\r\n');
-  }
-
-  // Function to handle export
-  const handleExport = async () => {
-    setIsLoading(true);
-    try {
-      const csvData = convertToCSV(data);
-      const csvBlob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-      const csvUrl = URL.createObjectURL(csvBlob);
-      const link = document.createElement('a');
-      link.href = csvUrl;
-      link.setAttribute('download', 'export.csv');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error) {
-      console.error('Failed to export data', error);
-    } finally {
-      setIsLoading(false);
+const ExportButton = ({ todos }) => {
+  const exportToCSV = () => {
+    if (!todos || todos.length === 0) {
+      alert('No todos to export!');
+      return;
     }
-  }
 
-  // useEffect to handle component updates
-  useEffect(() => {
-    // Any cleanup logic can go here
-    return () => {
-      // Cleanup
-    }
-  }, []);
+    const headers = ['Title', 'Description', 'Priority', 'Category', 'Completed', 'Created Date'];
+    const csvContent = [
+      headers.join(','),
+      ...todos.map(todo => [
+        `"${(todo.title || '').replace(/"/g, '""')}"`,
+        `"${(todo.description || '').replace(/"/g, '""')}"`,
+        todo.priority || 'medium',
+        todo.category || 'general',
+        todo.completed ? 'Yes' : 'No',
+        new Date(todo.created_at).toLocaleDateString()
+      ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `todos-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
-    <button
-      onClick={handleExport}
-      disabled={isLoading}
-      aria-label="Export data"
-    >
-      {isLoading ? 'Exporting...' : 'Export'}
+    <button onClick={exportToCSV} className="export-btn">
+      Export to CSV ({todos?.length || 0} todos)
     </button>
   );
-}
-
-// Prop Types
-ExportButton.propTypes = {
-  data: PropTypes.array.isRequired,
-}
+};
 
 export default ExportButton;
-```
-
-Please note that this is a basic implementation and might need adjustments based on your specific use case. For instance, you might want to handle the error in a user-friendly way rather than just logging it to the console.

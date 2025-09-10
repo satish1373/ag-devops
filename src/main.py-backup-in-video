@@ -1,0 +1,539 @@
+"""
+Complete Working LangGraph DevOps Autocoder - CLEAN VERSION
+"""
+
+import asyncio
+import json
+import logging
+import os
+import time
+import shutil
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, TypedDict
+import uuid
+from src.agents.enhanced_code_generator import EnhancedCodeGenerator
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create directories
+Path("logs").mkdir(exist_ok=True)
+Path("reports").mkdir(exist_ok=True)
+
+# Types
+class JiraStatus(Enum):
+    TODO = "To Do"
+    IN_PROGRESS = "In Progress" 
+    CODE_GENERATED = "Code Generated"
+    DEPLOYED = "Deployed"
+
+@dataclass
+class JiraUpdate:
+    status: str
+    timestamp: str
+    comment: str
+
+@dataclass
+class FileChange:
+    file: str
+    action: str
+    lines_added: int = 0
+
+@dataclass
+class Report:
+    issue_key: str
+    summary: str
+    issue_type: str
+    changes: List[FileChange]
+    created_at: str
+
+class AgentState(TypedDict):
+    trace_id: str
+    webhook_payload: Dict[str, Any]
+    issue_key: str
+    issue_summary: str
+    issue_type: str
+    issue_description: str
+    requirements: Dict[str, Any]
+    plan: Dict[str, Any]
+    generated_code: Dict[str, str]
+    file_changes: List[FileChange]
+    jira_updates: List[JiraUpdate]
+    report: Optional[Report]
+    errors: List[str]
+    verification_passed: bool
+    tests_passed: bool
+    deployment_successful: bool
+
+# Configuration
+@dataclass
+class Config:
+    project_root: str = "."
+    frontend_path: str = "todo-app/frontend"
+
+config = Config()
+
+def generate_trace_id() -> str:
+    return str(uuid.uuid4())
+
+class FileManager:
+    @staticmethod
+    def write_file(file_path: str, content: str, trace_id: str) -> FileChange:
+        file_path_obj = Path(file_path)
+        action = "modified" if file_path_obj.exists() else "created"
+        
+        file_path_obj.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(file_path_obj, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        lines_added = len(content.split('\n'))
+        logger.info(f"File {action}: {file_path} ({lines_added} lines)")
+        
+        return FileChange(
+            file=file_path,
+            action=action,
+            lines_added=lines_added
+        )
+
+# Agent Classes
+class IngressVerifier:
+    async def __call__(self, state: AgentState) -> AgentState:
+        logger.info(f"[{state['trace_id']}] Verifying webhook")
+        
+        try:
+            issue_data = state['webhook_payload'].get('issue', {})
+            state['issue_key'] = issue_data.get('key', '')
+            state['issue_summary'] = issue_data.get('fields', {}).get('summary', '')
+            state['issue_type'] = issue_data.get('fields', {}).get('issuetype', {}).get('name', '')
+            state['issue_description'] = issue_data.get('fields', {}).get('description', '')
+            
+            state['verification_passed'] = True
+            state['file_changes'] = []
+            
+            logger.info(f"[{state['trace_id']}] Verification successful for {state['issue_key']}")
+            
+        except Exception as e:
+            logger.error(f"[{state['trace_id']}] Verification failed: {e}")
+            state['errors'].append(f"Verification error: {str(e)}")
+            state['verification_passed'] = False
+        
+        return state
+
+class RequirementsAnalyst:
+    async def __call__(self, state: AgentState) -> AgentState:
+        logger.info(f"[{state['trace_id']}] Analyzing requirements")
+        
+        try:
+            requirements = {
+                "functional": [],
+                "files_to_modify": [],
+                "components_to_create": []
+            }
+            
+            description = state['issue_description'].lower()
+            
+            if "export" in description or "csv" in description:
+                requirements["functional"].append("Add export functionality")
+                requirements["files_to_modify"].extend([
+                    f"{config.frontend_path}/src/App.jsx",
+                    f"{config.frontend_path}/src/App.css"
+                ])
+                requirements["components_to_create"].append(f"{config.frontend_path}/src/components/ExportButton.jsx")
+                
+            if "search" in description or "filter" in description:
+                requirements["functional"].append("Add search functionality")
+                requirements["files_to_modify"].extend([
+                    f"{config.frontend_path}/src/App.jsx",
+                    f"{config.frontend_path}/src/App.css"
+                ])
+                requirements["components_to_create"].append(f"{config.frontend_path}/src/components/SearchBar.jsx")
+                
+            requirements["files_to_modify"] = list(set(requirements["files_to_modify"]))
+            requirements["components_to_create"] = list(set(requirements["components_to_create"]))
+                
+            state['requirements'] = requirements
+            
+            logger.info(f"[{state['trace_id']}] Requirements analysis completed")
+            
+        except Exception as e:
+            logger.error(f"[{state['trace_id']}] Requirements analysis failed: {e}")
+            state['errors'].append(f"Requirements analysis error: {str(e)}")
+        
+        return state
+
+class Planner:
+    async def __call__(self, state: AgentState) -> AgentState:
+        logger.info(f"[{state['trace_id']}] Creating plan")
+        
+        try:
+            requirements = state['requirements']
+            
+            plan = {
+                "files_to_modify": requirements.get("files_to_modify", []),
+                "files_to_create": requirements.get("components_to_create", [])
+            }
+            
+            state['plan'] = plan
+            
+            logger.info(f"[{state['trace_id']}] Plan created")
+            
+        except Exception as e:
+            logger.error(f"[{state['trace_id']}] Planning failed: {e}")
+            state['errors'].append(f"Planning error: {str(e)}")
+        
+        return state
+
+# class CodeGenerator:
+#     async def __call__(self, state: AgentState) -> AgentState:
+#         logger.info(f"[{state['trace_id']}] Generating code")
+        
+#         try:
+#             plan = state['plan']
+#             generated_code = {}
+#             description = state['issue_description'].lower()
+            
+#             # Generate components
+#             for file_path in plan.get('files_to_create', []):
+#                 if "ExportButton" in file_path:
+#                     generated_code[file_path] = self._generate_export_component()
+#                 elif "SearchBar" in file_path:
+#                     generated_code[file_path] = self._generate_search_component()
+            
+#             # Generate updated files
+#             for file_path in plan.get('files_to_modify', []):
+#                 if "App.jsx" in file_path:
+#                     generated_code[file_path] = self._generate_app(description)
+#                 elif "App.css" in file_path:
+#                     generated_code[file_path] = self._generate_css(description)
+            
+#             state['generated_code'] = generated_code
+            
+#             logger.info(f"[{state['trace_id']}] Generated {len(generated_code)} files")
+            
+#         except Exception as e:
+#             logger.error(f"[{state['trace_id']}] Code generation failed: {e}")
+#             state['errors'].append(f"Code generation error: {str(e)}")
+        
+#         return state
+    
+#     def _generate_export_component(self) -> str:
+#         return '''import React from 'react';
+
+# const ExportButton = ({ todos }) => {
+#   const exportToCSV = () => {
+#     if (!todos || todos.length === 0) {
+#       alert('No todos to export!');
+#       return;
+#     }
+
+#     const headers = ['Title', 'Priority', 'Completed', 'Created'];
+#     const csvContent = [
+#       headers.join(','),
+#       ...todos.map(todo => [
+#         `"${(todo.title || '').replace(/"/g, '""')}"`,
+#         todo.priority || 'medium',
+#         todo.completed ? 'Yes' : 'No',
+#         new Date(todo.created_at).toLocaleDateString()
+#       ].join(','))
+#     ].join('\\n');
+    
+#     const blob = new Blob([csvContent], { type: 'text/csv' });
+#     const url = window.URL.createObjectURL(blob);
+#     const a = document.createElement('a');
+#     a.href = url;
+#     a.download = `todos-${new Date().toISOString().split('T')[0]}.csv`;
+#     document.body.appendChild(a);
+#     a.click();
+#     document.body.removeChild(a);
+#     window.URL.revokeObjectURL(url);
+#   };
+
+#   return (
+#     <button onClick={exportToCSV} className="export-btn">
+#       Export CSV ({todos?.length || 0} todos)
+#     </button>
+#   );
+# };
+
+# export default ExportButton;'''
+
+#     def _generate_search_component(self) -> str:
+#         return '''import React from 'react';
+
+# const SearchBar = ({ searchTerm, onSearchChange }) => {
+#   return (
+#     <div className="search-bar">
+#       <input
+#         type="text"
+#         placeholder="Search todos..."
+#         value={searchTerm}
+#         onChange={(e) => onSearchChange(e.target.value)}
+#         className="search-input"
+#       />
+#       {searchTerm && (
+#         <button onClick={() => onSearchChange('')} className="clear-btn">
+#           Clear
+#         </button>
+#       )}
+#     </div>
+#   );
+# };
+
+export default SearchBar;'''
+
+    def _generate_app(self, description: str) -> str:
+        include_export = "export" in description
+        include_search = "search" in description
+        
+        imports = []
+        if include_export:
+            imports.append("import ExportButton from './components/ExportButton'")
+        if include_search:
+            imports.append("import SearchBar from './components/SearchBar'")
+        
+        search_state = ""
+        search_logic = ""
+        if include_search:
+            search_state = "  const [searchTerm, setSearchTerm] = useState('')"
+            search_logic = "  const handleSearchChange = (term) => setSearchTerm(term)"
+        
+        export_section = ""
+        if include_export:
+            export_section = "        <ExportButton todos={todos} />"
+        
+        search_section = ""
+        if include_search:
+            search_section = "        <SearchBar searchTerm={searchTerm} onSearchChange={handleSearchChange} />"
+        
+        return f'''import {{ useState, useEffect }} from 'react'
+{chr(10).join(imports)}
+import './App.css'
+
+function App() {{
+  const [todos, setTodos] = useState([])
+  const [loading, setLoading] = useState(true)
+{search_state}
+
+  useEffect(() => {{
+    fetchTodos()
+  }}, [])
+
+  const fetchTodos = async () => {{
+    try {{
+      const response = await fetch('http://localhost:3001/api/todos')
+      const data = await response.json()
+      setTodos(data)
+    }} catch (error) {{
+      console.error('Failed to fetch todos:', error)
+    }} finally {{
+      setLoading(false)
+    }}
+  }}
+{search_logic}
+
+  if (loading) return <div>Loading...</div>
+
+  return (
+    <div className="app">
+      <h1>Todo App</h1>
+{search_section}
+{export_section}
+      <div className="todos">
+        {{todos.map(todo => (
+          <div key={{todo.id}} className="todo-item">
+            <span>{{todo.title}}</span>
+          </div>
+        ))}}
+      </div>
+    </div>
+  )
+}}
+
+export default App'''
+
+    def _generate_css(self, description: str) -> str:
+        return '''.app {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+h1 {
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.search-bar {
+  margin-bottom: 20px;
+}
+
+.search-input {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 300px;
+}
+
+.clear-btn {
+  margin-left: 10px;
+  padding: 10px 15px;
+  background: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.export-btn {
+  padding: 10px 20px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+
+.todos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.todo-item {
+  padding: 15px;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  background: white;
+}'''
+
+class GitIntegrator:
+    async def __call__(self, state: AgentState) -> AgentState:
+        logger.info(f"[{state['trace_id']}] Writing files")
+        
+        try:
+            file_changes = []
+            generated_files = state.get('generated_code', {})
+            
+            for file_path, content in generated_files.items():
+                try:
+                    abs_file_path = Path(config.project_root) / file_path
+                    file_change = FileManager.write_file(str(abs_file_path), content, state['trace_id'])
+                    file_changes.append(file_change)
+                except Exception as e:
+                    logger.error(f"Failed to write {file_path}: {e}")
+                    state['errors'].append(f"File write error: {str(e)}")
+            
+            state['file_changes'] = file_changes
+            logger.info(f"[{state['trace_id']}] Wrote {len(file_changes)} files")
+            
+        except Exception as e:
+            logger.error(f"[{state['trace_id']}] File writing failed: {e}")
+            state['errors'].append(f"File writing error: {str(e)}")
+        
+        return state
+
+class Reporter:
+    async def __call__(self, state: AgentState) -> AgentState:
+        logger.info(f"[{state['trace_id']}] Generating report")
+        
+        try:
+            file_changes = state.get('file_changes', [])
+            
+            report = Report(
+                issue_key=state['issue_key'],
+                summary=state['issue_summary'],
+                issue_type=state['issue_type'],
+                changes=file_changes,
+                created_at=datetime.now().isoformat()
+            )
+            
+            state['report'] = report
+            
+            report_content = f"""# DevOps Automation Report
+
+## Issue: {report.issue_key}
+- Summary: {report.summary}
+- Type: {report.issue_type}
+- Generated: {report.created_at}
+
+## Files Modified
+{chr(10).join(f'- {change.file} ({change.action}, {change.lines_added} lines)' for change in report.changes)}
+
+## Status
+✅ Automation completed successfully!
+"""
+            
+            reports_dir = Path("reports")
+            reports_dir.mkdir(exist_ok=True)
+            
+            report_file = reports_dir / f"{state['issue_key']}.md"
+            with open(report_file, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+            
+            logger.info(f"[{state['trace_id']}] Report saved: {report_file}")
+            
+        except Exception as e:
+            logger.error(f"[{state['trace_id']}] Report generation failed: {e}")
+            state['errors'].append(f"Report error: {str(e)}")
+        
+        return state
+
+# Main function
+async def process_jira_webhook(webhook_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Process Jira webhook and generate code"""
+    
+    trace_id = generate_trace_id()
+    initial_state = AgentState(
+        trace_id=trace_id,
+        webhook_payload=webhook_payload,
+        issue_key="",
+        issue_summary="",
+        issue_type="",
+        issue_description="",
+        requirements={},
+        plan={},
+        generated_code={},
+        file_changes=[],
+        jira_updates=[],
+        report=None,
+        errors=[],
+        verification_passed=False,
+        tests_passed=False,
+        deployment_successful=False
+    )
+    
+    logger.info(f"[{trace_id}] Starting automation pipeline")
+    
+    try:
+        agents = [
+            ("Verification", IngressVerifier()),
+            ("Requirements", RequirementsAnalyst()),
+            ("Planning", Planner()),
+            ("Code Generation", CodeGenerator()),
+            ("File Writing", GitIntegrator()),
+            ("Reporting", Reporter())
+        ]
+        
+        state = initial_state
+        for agent_name, agent in agents:
+            try:
+                logger.info(f"[{trace_id}] Running {agent_name}")
+                state = await agent(state)
+            except Exception as e:
+                error_msg = f"{agent_name} failed: {str(e)}"
+                logger.error(f"[{trace_id}] {error_msg}")
+                state['errors'].append(error_msg)
+        
+        logger.info(f"[{trace_id}] Pipeline completed")
+        return state
+        
+    except Exception as e:
+        logger.error(f"[{trace_id}] Pipeline failed: {e}")
+        initial_state['errors'].append(f"Pipeline failure: {str(e)}")
+        return initial_state

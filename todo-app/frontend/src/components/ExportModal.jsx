@@ -1,56 +1,44 @@
-```jsx
-import React, { useState } from 'react';
-import PropTypes from 'prop-types';
+import React from 'react';
 
-// Import common components
-import ExportButton from './ExportButton';
-import SearchBar from './SearchBar';
-import Modal from './Modal';
+const ExportModal = ({ todos, onClose }) => {
+  const exportToCSV = () => {
+    if (!todos || todos.length === 0) {
+      alert('No todos to export!');
+      return;
+    }
 
-// ExportModal component
-const ExportModal = ({ isOpen, onClose, onExport }) => {
-  // State for the selected export format
-  const [exportFormat, setExportFormat] = useState('csv');
-
-  // Handle export format change
-  const handleExportFormatChange = (event) => {
-    setExportFormat(event.target.value);
-  };
-
-  // Handle export confirmation
-  const handleExportConfirm = () => {
-    // Call the onExport function with the selected format
-    onExport(exportFormat);
-    // Close the modal
+    const headers = ['Title', 'Priority', 'Completed', 'Created Date'];
+    const csvContent = [
+      headers.join(','),
+      ...todos.map(todo => [
+        `"${todo.title}"`,
+        todo.priority,
+        todo.completed ? 'Yes' : 'No',
+        new Date(todo.created_at).toLocaleDateString()
+      ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `todos-export.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} aria-label="Export modal">
-      <h2>Export Data</h2>
-      <SearchBar />
-      <div>
-        <label>
-          Export format:
-          <select value={exportFormat} onChange={handleExportFormatChange}>
-            <option value="csv">CSV</option>
-            <option value="json">JSON</option>
-          </select>
-        </label>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <h3>Export Options</h3>
+        <button onClick={exportToCSV}>Export as CSV</button>
+        <button onClick={onClose}>Cancel</button>
       </div>
-      <ExportButton onClick={handleExportConfirm} />
-    </Modal>
+    </div>
   );
 };
 
-// Prop types for the ExportModal component
-ExportModal.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  onClose: PropTypes.func.isRequired,
-  onExport: PropTypes.func.isRequired,
-};
-
 export default ExportModal;
-```
-
-Please note that the `ExportButton`, `SearchBar`, and `Modal` components are not included in this code. They should be implemented separately and imported into this component.
